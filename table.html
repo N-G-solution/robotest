@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>INVOICE</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+</head>
+
+<body>
+    <div class="table-responsive">
+        <h1 id="tables">
+            <span id="table">TABLE</span>
+            <span id="products">PRODUCTS</span>
+            <span id="product_categories">PRODUCTS CATEGORIES</span>
+            <span id="new_products">NEW PRODUCTS</span>
+            <span id="get_invoice_list">GET INVOICE LIST</span>
+        </h1>
+        <table class="table table-bordered table-striped" id="self">
+        </table>
+
+    </div>
+
+    <div id="dialog"></div>
+
+</body>
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+
+<script>
+    var data = [];
+    var def = {
+        'get_invoice_list': {
+            'date_invoice': 'Date',
+            'number': 'Number',
+            'partner_name': 'Client',
+            'amount_untaxed_invoice_currency': 'Untaxed'
+        }
+    }
+    const table = document.getElementById('self');
+
+    function change(name) {
+        if (table.dataset.last == name) return
+        table.dataset.last = name
+        fetch('json/' + name + '.json').then(response => {
+            return response.json();
+        }).then(json => {
+            data = json.result && json.result.data || json;
+            data.length && reloadTable(data[0]);
+        }).catch(err => {
+            console.log('Error', err);
+        });
+    }
+
+    change('get_invoice_list')
+
+    document.getElementById('tables').querySelectorAll('span').forEach(function (el, index) {
+        el.addEventListener("click", function () { change(this.id) })
+        const color = ["Blue ", "Green", "Red", "Orange", "Violet", "Indigo", "Yellow "];
+        el.style.color = color[index % color.length]
+    });
+
+    function dual(key, val) {
+        let tr = document.createElement('tr')
+        let td = document.createElement('td')
+        let th = document.createElement('th')
+        let a = document.createTextNode(key)
+        let b = document.createTextNode(val)
+        th.appendChild(a)
+        td.appendChild(b)
+        tr.appendChild(th)
+        tr.appendChild(td)
+        return tr
+    }
+
+    function paint(body, el) {
+        var tr = $(el).closest('tr')
+        var th = $(el).closest('table').children('tr:first').find('th')
+        var tbl = document.createElement('table')
+        tr.find('td').each((index, td) => {
+            let el = dual(th[index].firstChild.nodeValue, td.firstChild.nodeValue)
+            tbl.appendChild(el)
+        })
+        body.empty().append(tbl);
+    }
+
+    function property(el) {
+        $('#dialog').dialog({
+            modal: true,
+            autoOpen: !false,
+            width: 800,
+            buttons: {
+                Prev: function () { let a = $(el).closest('tr').prev('tr').find('td'); a.length && paint($(this), el = a.get(0)); },
+                Next: function () { let a = $(el).closest('tr').next('tr').find('td'); a.length && paint($(this), el = a.get(0)); },
+                Ok: function () { $(this).dialog("close"); },
+            },
+            open: function () {
+                paint($(this), el);
+            },
+            close: function () {
+                $(this).empty();
+                $(this).dialog("close");
+            },
+            show: { effect: "blind", duration: 1000 },
+            hide: { effect: "blind", duration: 1000 }
+        })
+    }
+
+    document.body.onclick = function (e) {
+        const el = e.target
+        if (el && el.tagName == 'TD') property(el)
+    }
+
+    $('body').on('contextmenu', function (e) {
+        e.stopPropagation();
+        $('#dialog').dialog({
+            modal: true,
+            autoOpen: !false,
+            width: 300,
+            buttons: {
+                Filter: function () {
+                    let name = table.dataset.last
+                    if (name != 'get_invoice_list') return
+                    let a = $(this).find('input[name=from]');
+                    let b = $(this).find('input[name=to]');
+                    let c = $(this).find('input[name=find]');
+                    reloadTableFilter(a.val(), b.val(), c.val())
+                },
+                Ok: function () { $(this).dialog("close"); },
+            },
+            open: function () {
+                var body = $(this);
+                var from = document.createElement('input')
+                from.name = 'from'
+                var to = document.createElement('input')
+                to.name = 'to'
+                var find = document.createElement('input')
+                find.name = 'find'
+                var fromlabel = document.createElement('label')
+                var fromtext = document.createTextNode('From')
+                fromlabel.appendChild(fromtext)
+                var tolabel = document.createElement('label')
+                var totext = document.createTextNode('To')
+                tolabel.appendChild(totext)
+                var findlabel = document.createElement('label')
+                var findtext = document.createTextNode('Find')
+                findlabel.appendChild(findtext)
+                body.empty().append(fromlabel).append(from).append(tolabel).append(to).append(findlabel).append(find);
+                $([from, to]).datepicker({
+                    dateFormat: "yy-mm-dd"
+                });
+                $(find).focus()
+            },
+            close: function () {
+                $(this).empty();
+                $(this).dialog("close");
+            },
+            show: { effect: "blind", duration: 1000 },
+            hide: { effect: "blind", duration: 1000 }
+        })
+        return false;
+    });
+
+    function order() {
+        const key = this.dataset.key, k = {}
+        const last = this.parentNode.dataset.key
+        if (key != last) data.sort((a, b) => {
+            let cmp = a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0;
+            k[cmp] = true
+            return cmp
+        });
+        if (key == last || Object.keys(k).length == 1) data.reverse()
+
+        reloadTable();
+        this.parentNode.dataset.key = key
+    }
+
+    function header(data) {
+        let tr = document.createElement('tr')
+        let name = table.dataset.last
+        let fld = def[name]
+        for (const [key, value] of Object.entries(data)) {
+            if (fld && !(key in fld)) continue
+            let th = document.createElement('th')
+            th.dataset.key = key
+            th.addEventListener("click", order)
+            th.style.cursor = 'pointer'
+            let text = document.createTextNode(fld ? fld[key] : key)
+            th.appendChild(text)
+            tr.appendChild(th)
+        }
+        table.appendChild(tr)
+    }
+
+    function rownew(data) {
+        let tr = document.createElement('tr')
+        let name = table.dataset.last
+        let fld = def[name]
+        for (const [key, value] of Object.entries(data)) {
+            if (fld && !(key in fld)) continue
+            let td = document.createElement('td')
+            let text = document.createTextNode(value)
+            td.appendChild(text)
+            tr.appendChild(td)
+        }
+        table.appendChild(tr)
+    }
+
+    function rowover(data, tr) {
+        let td = tr.querySelector('td')
+        let name = table.dataset.last
+        let fld = def[name]
+        for (const [key, value] of Object.entries(data)) {
+            if (fld && !(key in fld)) continue
+            td.firstChild.nodeValue = value
+            td = td.nextElementSibling
+        }
+    }
+
+    function clean(table) {
+        while (table.firstChild) { table.removeChild(table.lastChild); }
+    }
+
+    function reloadTable(field) {
+        reloadTable2(data, field)
+    }
+
+    function cmp(a, b) {
+        return (a > b) - (a < b)
+    }
+
+    function reloadTableFilter(from, to, text) {
+        let re = new RegExp(text)
+        let dataf = data.filter(item => {
+            let rez = (from.length == 0 || from <= item.date_invoice)
+                && (to.length == 0 || item.date_invoice <= to)
+                && (text.lenght == 0 || re.test(item.partner_name) || re.test(item.number))
+            return rez
+        }).sort(cmp)
+        reloadTable2(dataf, data[0])
+    }
+
+    function reloadTable2(data, field) {
+        if (field) {
+            clean(table)
+            header(field);
+            data.forEach(rownew);
+        } else {
+            let tr = table.querySelector('tr');
+            data.forEach(value => {
+                tr = tr.nextSibling
+                rowover(value, tr)
+            });
+        }
+
+    }
+</script>
+
+</html>
